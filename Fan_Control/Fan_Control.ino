@@ -4,11 +4,28 @@
 // Initialises the LED matrix used to display temperature and fan speed.
 ArduinoLEDMatrix matrix;
 
+
 unsigned long matrixFrame[] = { // 12 rows, 8 columns, 92 bits total. 3 nibbles per row
-  0x10101010
-  0x10101010
-  0x10101010
+  0xFFFFFF00,
+  0x10101010,
+  0xFFFFFFFF
 };
+
+unsigned short PWM_Target_LED[] ={
+  0xFFF0,
+  0xFFF0
+};
+
+unsigned short PWM_LED[] ={
+  0xFFF0,
+  0xFFF0
+};
+
+unsigned char Temp_LED[] ={
+  0xFFF0,
+  0xFFF0
+};
+
 
 // Temperature control variables
 const int thermistorPin = 0; //Pin of Thermistor output
@@ -27,18 +44,18 @@ int tempIndex = 0;
 const word PWM_FREQ_HZ = 25000;
 PwmOut pwm(D9);
 
-const int TEMP_MIN = 2;
+const int TEMP_MIN = 10;
 const int TEMP_MAX = 40;
 float PWMDuty;
-float Target_PWM;
+float Target_PWMDuty;
 int PWMDuty_int;
 int Target_PWMDuty_int;
 
-unsigned long time; //millis()
-unsigned long prev_time;
-const unsigned long Fan_control = 1000;
+unsigned long curTime; //millis()
+unsigned long prevTime;
+const unsigned long Fan_Interval = 1000; // Time between loop iterations in milliseconds
 
-const float PWMDuty_Max_Change = 10 / (Fan_Control / 1000); //Maximum PWM_Duty change per second, in percent 
+const float PWMDuty_Max_Change = 10 / (Fan_Interval / 1000); //Maximum PWM_Duty change per second, in percent 
 
 //Add Ramp Rate
 //Time to ramp  - 8 seconds? and ramp increase per step? 10%
@@ -58,11 +75,25 @@ void setup() {
 
   std::fill(std::begin(rollingTemp), std::end(rollingTemp), 0);
 
-  prev_time = millis();
+  prevTime = millis();
 
   matrix.begin();
+  matrix.loadFrame(matrixFrame);
+
+  matrixFrame[0] = 0x0 | PWM_LED[0] << 4 | PWM_LED[1] << 16;
+  matrixFrame[1] = PWM_LED[0] | PWM_LED[1] << 12 | 0x00;
+  matrixFrame[2] = PWM_LED[0] >> 4| PWM_LED[1] << 8 | 0x00 << 24;
+
+
+  delay(1000);
+
+  matrix.loadFrame(matrixFrame);
+
 
 }
+
+//void matrixControl() {
+//  PWMTarget}
 
 void temperature() {
   //Reads the voltage from an analog pin connected to a thermistor and converts it to a temperature in degrees C
@@ -121,13 +152,13 @@ void fanControl() {
   if (abs(Target_PWMDuty - PWMDuty) > PWMDuty_Max_Change) {
 
     if (Target_PWMDuty > PWMDuty) {
-      PWM_Duty += PWMDuty_Max_Change;
+      PWMDuty += PWMDuty_Max_Change;
     } else {
-      PWM_Duty -= PWMDuty_Max_Change;
+      PWMDuty -= PWMDuty_Max_Change;
     }
 
   } else {
-    PWM_Duty = Target_PWMDuty;
+    PWMDuty = Target_PWMDuty;
   }
   setPWMDuty(PWMDuty);
 
@@ -145,9 +176,9 @@ void fanControl() {
 
 void loop() {
 
-  time = millis();
-  if (prev_time - time > Fan_Interval) {
-    prev_time = time;
+  curTime = millis();
+  if (curTime - prevTime > Fan_Interval) {
+    prevTime = curTime;
     temperature();
     update_avg_temp();
     fanControl();
