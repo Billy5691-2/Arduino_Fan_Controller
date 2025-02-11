@@ -6,25 +6,12 @@ ArduinoLEDMatrix matrix;
 
 
 unsigned long matrixFrame[] = { // 12 rows, 8 columns, 92 bits total. 3 nibbles per row
-  0xFFFFFF00,
-  0x10101010,
-  0xFFFFFFFF
+  0x00000000,
+  0x00000000,
+  0x00000000
 };
 
-unsigned short PWM_Target_LED[] ={
-  0xFFF0,
-  0xFFF0
-};
-
-unsigned short PWM_LED[] ={
-  0xFFF0,
-  0xFFF0
-};
-
-unsigned char Temp_LED[] ={
-  0xFFF0,
-  0xFFF0
-};
+unsigned short PWM_Target_LED = 0x0FFF, PWM_LED = 0x0FFF, Temp_LED = 0x0FFF;
 
 
 // Temperature control variables
@@ -68,32 +55,58 @@ void setup() {
 
   pwm.begin(PWM_FREQ_HZ, 20.0f);
   PWMDuty = 20.0;
-  delay(2000);
-
-  Serial.print("Program Start");
-  Serial.println("");
 
   std::fill(std::begin(rollingTemp), std::end(rollingTemp), 0);
 
   prevTime = millis();
-
+  
   matrix.begin();
+
+  //matrixFrame[0] = 0x0 | PWM_LED << 4 | PWM_LED << 16;
+  //matrixFrame[1] = PWM_Target_LED | PWM_Target_LED << 12 | 0x00;
+  //matrixFrame[2] = Temp_LED >> 4| Temp_LED << 8 | 0x00 << 24;
+
+  matrixFrame[0] = PWM_LED << 8 | PWM_LED << 20;
+  matrixFrame[1] = PWM_Target_LED << 4| PWM_Target_LED << 16;
+  matrixFrame[2] = Temp_LED | Temp_LED << 12;
+
   matrix.loadFrame(matrixFrame);
 
-  matrixFrame[0] = 0x0 | PWM_LED[0] << 4 | PWM_LED[1] << 16;
-  matrixFrame[1] = PWM_LED[0] | PWM_LED[1] << 12 | 0x00;
-  matrixFrame[2] = PWM_LED[0] >> 4| PWM_LED[1] << 8 | 0x00 << 24;
+  delay(3000);
 
-
-  delay(1000);
-
-  matrix.loadFrame(matrixFrame);
+  Serial.print("Program Start");
+  Serial.println("");
 
 
 }
 
-//void matrixControl() {
-//  PWMTarget}
+
+unsigned short percentToMatrix(int percent){
+  int scale = (int)(percent * 1.2 / 10);
+  unsigned short output = 0;
+  for (int i=0; i < scale; i++) output += pow(2, i);
+  return output;
+}
+
+int temperatureToPercent(float inpTemp) {
+  if (inpTemp >= TEMP_MAX) return 100;
+  else if (inpTemp <= TEMP_MIN) return 0;
+  else return ((inpTemp - TEMP_MIN) / (TEMP_MAX - TEMP_MIN) * 100);
+}
+
+void matrixControl(){
+  /* Updates the LED Matrix to display 3 bars which display the relative values of Temperature, PWMDuty and Target_PWMDuty
+  */
+
+  PWM_LED = percentToMatrix(PWMDuty_int);
+  PWM_Target_LED = percentToMatrix(Target_PWMDuty_int);
+  Temp_LED = percentToMatrix(temperatureToPercent(avgTemp));
+
+  matrixFrame[0] = PWM_LED << 8 | PWM_LED << 20;  
+  matrixFrame[1] = PWM_Target_LED << 4| PWM_Target_LED << 16;
+  matrixFrame[2] = Temp_LED | Temp_LED << 12;
+  matrix.loadFrame(matrixFrame);
+}
 
 void temperature() {
   //Reads the voltage from an analog pin connected to a thermistor and converts it to a temperature in degrees C
@@ -175,13 +188,13 @@ void fanControl() {
 
 
 void loop() {
-
   curTime = millis();
   if (curTime - prevTime > Fan_Interval) {
     prevTime = curTime;
     temperature();
     update_avg_temp();
     fanControl();
+    matrixControl();
   }
 
   delay(1000);
